@@ -1,0 +1,35 @@
+{
+  "name": "nested-folder-platform",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.10.0",
+    "jszip": "^3.10.1",
+    "papaparse": "^5.5.3",
+    "pdfjs-dist": "^5.3.93",
+    "lucide-react": "^0.525.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-dropzone": "^14.3.8",
+    "react-icons": "^4.12.0",
+    "react-pdf": "^7.7.3",
+    "react-router-dom": "^6.14.1",
+    "react-table": "^7.8.0"
+  },
+  "devDependencies": {
+    "@types/axios": "^0.14.4",
+    "@types/papaparse": "^5.3.16",
+    "@types/react-table": "^7.7.20",
+    "@vitejs/plugin-react": "^4.6.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
