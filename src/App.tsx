@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import UploadZip from "./components/UploadZip";
 import FileExplorer from "./components/FileExplorer";
 import { CsvViewer } from "./components/CsvViewer";
@@ -30,6 +30,17 @@ export default function App() {
     return { files: totalFiles, folders: totalFolders - 1 };
   };
 
+  useEffect(() => {
+    const fetchStructure = async () => {
+      const res = await fetch("http://localhost:5000/api/files/structure");
+      const data = await res.json();
+      console.log("Loaded structure:", data);
+      // setFileTree(data[0]); // Or whatever format your frontend expects
+    };
+
+    fetchStructure();
+  }, []);
+
   const stats = structure ? getFileStats(structure) : { files: 0, folders: 0 };
 
   return (
@@ -43,8 +54,12 @@ export default function App() {
                 <FolderOpen className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">Nested Folder Viewer</h1>
-                <p className="text-sm text-slate-600">Drag and drop ZIPs to explore contents</p>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  Nested Folder Viewer
+                </h1>
+                <p className="text-sm text-slate-600">
+                  Drag and drop ZIPs to explore contents
+                </p>
               </div>
             </div>
 
@@ -94,10 +109,15 @@ export default function App() {
                         )}
                       </div>
                       <div>
-                        <h2 className="font-semibold text-slate-900">{selectedFile.name}</h2>
+                        <h2 className="font-semibold text-slate-900">
+                          {selectedFile.name}
+                        </h2>
                         <p className="text-sm text-slate-600">
-                          {selectedFile.fileType.toUpperCase()} • Modified by {selectedFile.modifiedBy} •{" "}
-                          {new Date(selectedFile.createdAt).toLocaleDateString()}
+                          {selectedFile.fileType.toUpperCase()} • Modified by{" "}
+                          {selectedFile.modifiedBy} •{" "}
+                          {new Date(
+                            selectedFile.createdAt
+                          ).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
@@ -106,8 +126,12 @@ export default function App() {
                       <div className="p-4 bg-slate-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                         <File className="w-8 h-8 text-slate-400" />
                       </div>
-                      <h3 className="text-lg font-medium text-slate-900 mb-2">No file selected</h3>
-                      <p className="text-slate-600">Choose a file from the sidebar to preview its contents</p>
+                      <h3 className="text-lg font-medium text-slate-900 mb-2">
+                        No file selected
+                      </h3>
+                      <p className="text-slate-600">
+                        Choose a file from the sidebar to preview its contents
+                      </p>
                     </div>
                   )}
                 </div>
