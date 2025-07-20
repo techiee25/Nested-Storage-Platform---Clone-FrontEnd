@@ -8,6 +8,8 @@ import { FolderOpen, File, Database } from "lucide-react";
 export default function App() {
   const [structure, setStructure] = useState<any>(null);
   const [selectedFile, setSelectedFile] = useState<any>(null);
+  const [fileMap, setFileMap] = useState<Record<string, File>>({});
+
 
   const handleFileClick = (file: any) => {
     setSelectedFile(file);
@@ -84,7 +86,27 @@ export default function App() {
         {!structure ? (
           <div className="h-full w-full overflow-auto p-6 flex justify-center items-center">
             <div className="w-full max-w-3xl">
-              <UploadZip onStructureReady={setStructure} />
+<UploadZip
+  onStructureReady={(savedStructure, fileMap) => {
+    // Inject blobs into the structure
+    const attachFiles = (node: any): any => {
+      if (node.type === "file" && fileMap[node.name]) {
+        return { ...node, file: fileMap[node.name] };
+      }
+      if (node.type === "folder" && Array.isArray(node.children)) {
+        return {
+          ...node,
+          children: node.children.map(attachFiles),
+        };
+      }
+      return node;
+    };
+
+    const hydratedStructure = attachFiles(savedStructure);
+    setStructure(hydratedStructure);
+    setFileMap(fileMap);
+  }}
+/>
             </div>
           </div>
         ) : (

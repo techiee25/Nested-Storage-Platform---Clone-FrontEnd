@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { isZipFile, parseZipFile } from "./utils";
 import { Upload, FileText, Database, AlertCircle, CheckCircle } from "lucide-react";
 
@@ -20,30 +20,35 @@ interface FolderItem {
 }
 
 interface UploadZipProps {
-  onStructureReady: (structure: FolderItem) => void;
+  onStructureReady: (structure: FolderItem, fileMap: Record<string, File>) => void;
 }
 
 const UploadZip: React.FC<UploadZipProps> = ({ onStructureReady }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<"idle" | "success" | "error">("idle");
   const [dragActive, setDragActive] = useState(false);
+  const fileMapRef = useRef<Record<string, File>>({});
 
-const stripFileObjects = (node: any): any => {
-  if (node.type === "file") {
-    const { file, ...rest } = node;
-    return {
-      ...rest,
-      fileUrl: URL.createObjectURL(file) // ✅ inject a viewable link
-    };
-  } else if (node.type === "folder" && Array.isArray(node.children)) {
-    return {
-      ...node,
-      children: node.children.map(stripFileObjects)
-    };
-  }
-  return node;
-};
+  const extractFileMap = (node: any): void => {
+    if (node.type === "file" && node.file) {
+      fileMapRef.current[node.name] = node.file;
+    } else if (node.type === "folder" && Array.isArray(node.children)) {
+      node.children.forEach(extractFileMap);
+    }
+  };
 
+  const stripFileObjects = (node: any): any => {
+    if (node.type === "file") {
+      const { file, ...rest } = node;
+      return rest;
+    } else if (node.type === "folder" && Array.isArray(node.children)) {
+      return {
+        ...node,
+        children: node.children.map(stripFileObjects)
+      };
+    }
+    return node;
+  };
 
   const handleZipUpload = async (file: File) => {
     if (!isZipFile(file)) {
@@ -56,6 +61,9 @@ const stripFileObjects = (node: any): any => {
 
     try {
       const rootFolder = await parseZipFile(file, "You");
+      fileMapRef.current = {};
+      extractFileMap(rootFolder);
+
       const cleanedFolder = stripFileObjects(rootFolder);
 
       const response = await fetch("http://localhost:5000/api/files/upload", {
@@ -69,7 +77,7 @@ const stripFileObjects = (node: any): any => {
       const savedData = await response.json();
       console.log("Saved folder:", savedData);
 
-      onStructureReady(savedData);
+      onStructureReady(savedData, fileMapRef.current);
       setUploadStatus("success");
     } catch (error) {
       console.error("Upload failed:", error);
