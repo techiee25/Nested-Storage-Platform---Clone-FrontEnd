@@ -21,24 +21,90 @@ interface CsvViewerProps {
   file?: File;
 }
 
-// Mock utility functions - replace with your actual implementations
+// Robust CSV parser that handles quoted fields and embedded commas
+const parseCsvLine = (line: string): string[] => {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < line.length) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        // Handle escaped quotes ("")
+        current += '"';
+        i += 2;
+        continue;
+      } else {
+        // Toggle quote state
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      // End of field
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+    i++;
+  }
+
+  // Add the last field
+  result.push(current.trim());
+  return result;
+};
+
 const parseCsvFile = async (file: File): Promise<{ data: CsvRow[]; columns: string[] }> => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const lines = text.split('\n').filter(line => line.trim());
-      const headers = lines[0].split(',').map(h => h.trim());
-      const data: CsvRow[] = lines.slice(1).map(line => {
-        const values = line.split(',');
-        const row: CsvRow = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index]?.trim() || '';
-        });
-        return row;
-      });
-      resolve({ data, columns: headers });
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(line => line.trim());
+        
+        if (lines.length === 0) {
+          throw new Error("CSV file is empty");
+        }
+
+        // Parse header row
+        const headers = parseCsvLine(lines[0]).map(h => h.replace(/^"(.*)"$/, '$1').trim());
+        
+        // Parse data rows
+        const data: CsvRow[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const values = parseCsvLine(lines[i]);
+          const row: CsvRow = {};
+          
+          headers.forEach((header, index) => {
+            let value = values[index] || '';
+            // Remove surrounding quotes if present
+            value = value.replace(/^"(.*)"$/, '$1').trim();
+            
+            // Try to convert to number if it looks like a number
+            const numValue = Number(value);
+            if (!isNaN(numValue) && value !== '' && !isNaN(parseFloat(value))) {
+              row[header] = numValue;
+            } else {
+              row[header] = value;
+            }
+          });
+          
+          // Only add row if it has at least one non-empty value
+          if (Object.values(row).some(val => val !== '')) {
+            data.push(row);
+          }
+        }
+        
+        resolve({ data, columns: headers });
+      } catch (error) {
+        reject(error instanceof Error ? error.message : "Failed to parse CSV file");
+      }
     };
+    
+    reader.onerror = () => reject("Failed to read file");
     reader.readAsText(file);
   });
 };
@@ -49,7 +115,16 @@ const exportCsvData = (data: CsvRow[], filename: string): void => {
   const headers = Object.keys(data[0]);
   const csvContent = [
     headers.join(','),
-    ...data.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
+    ...data.map(row => 
+      headers.map(header => {
+        const value = String(row[header] || '');
+        // Escape quotes and wrap in quotes if the value contains comma, quote, or newline
+        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      }).join(',')
+    )
   ].join('\n');
   
   const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -61,7 +136,7 @@ const exportCsvData = (data: CsvRow[], filename: string): void => {
   URL.revokeObjectURL(url);
 };
 
-export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
+export default function CsvViewer({ file }: CsvViewerProps) {
   const [data, setData] = useState<CsvRow[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [filteredData, setFilteredData] = useState<CsvRow[]>([]);
@@ -76,11 +151,21 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock file for demo - replace with your actual file prop
-  const mockFile = new File(['Name,Age,City,Country,Salary\nJohn,25,New York,USA,50000\nJane,30,London,UK,60000\nBob,35,Tokyo,Japan,70000\nAlice,28,Paris,France,55000\nCharlie,32,Berlin,Germany,65000\nDavid,29,Sydney,Australia,58000\nEva,31,Toronto,Canada,62000'], 'sample.csv', { type: 'text/csv' });
+  // Enhanced mock file for demo with properly quoted CSV data
+  const mockFile = new File([
+    'Index,Customer Id,First Name,Last Name,Company,City,Country,Phone 1,Phone 2\n' +
+    '1,2d08FB17EE273F4,Aimee,Downs,"Steele Group",Chavezborough,"Bosnia and Herzegovina",(283)437-3886x8321,999-728-1637\n' +
+    '2,EA4d384DfDbBf77,Darren,Peck,"Lester, Woodard and Mitchell","Lake Ana","Pitcairn Islands",(496)452-6181x,(496)452-6181x\n' +
+    '3,0e04Fde9f225dE,Brett,Mullen,"Sanford, Davenport and Giles",Kimport,Bulgaria,001-583-352-710,001-583-352-710\n' +
+    '4,C2dE4dEcc489ae0,Sheryl,Meyers,Browning-Simon,Robersonstad,Cyprus,854-138-4911x5772,+1-448-910-2237\n' +
+    '5,8C2811a503C7c5a,Michelle,Gallagher,Beck-Hendrix,Elaineberg,Timor-Leste,739.218.2516x459,001-054-401-0209'
+  ], 'sample.csv', { type: 'text/csv' });
 
   useEffect(() => {
     const fileToUse = file || mockFile;
+    setLoading(true);
+    setError(null);
+    
     parseCsvFile(fileToUse)
       .then(({ data, columns }) => {
         setData(data);
@@ -96,7 +181,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
   }, [file]);
 
   useEffect(() => {
-    let filtered = data;
+    let filtered = [...data];
 
     // Apply global search filter
     if (globalSearchQuery) {
@@ -111,7 +196,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
     columnFilters.forEach(filter => {
       if (filter.value) {
         filtered = filtered.filter((row) => {
-          const cellValue = String(row[filter.column]).toLowerCase();
+          const cellValue = String(row[filter.column] || '').toLowerCase();
           const filterValue = filter.value.toLowerCase();
           
           switch (filter.operator) {
@@ -124,9 +209,9 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
             case "endsWith":
               return cellValue.endsWith(filterValue);
             case "greater":
-              return Number(cellValue) > Number(filterValue);
+              return Number(row[filter.column]) > Number(filterValue);
             case "less":
-              return Number(cellValue) < Number(filterValue);
+              return Number(row[filter.column]) < Number(filterValue);
             default:
               return cellValue.includes(filterValue);
           }
@@ -140,8 +225,17 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
         const aValue = a[sortConfig.key];
         const bValue = b[sortConfig.key];
         
-        if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+        // Handle numeric sorting
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
+        }
+        
+        // Handle string sorting
+        const aStr = String(aValue).toLowerCase();
+        const bStr = String(bValue).toLowerCase();
+        
+        if (aStr < bStr) return sortConfig.direction === "asc" ? -1 : 1;
+        if (aStr > bStr) return sortConfig.direction === "asc" ? 1 : -1;
         return 0;
       });
     }
@@ -223,7 +317,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
 
   const handleItemsPerPageChange = (newItemsPerPage: number): void => {
     setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset to first page when changing items per page
+    setCurrentPage(1);
   };
 
   if (loading) {
@@ -251,7 +345,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
   const visibleColumnsList = columns.filter(col => visibleColumns[col]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4">
       {/* Enhanced Control Panel */}
       <div className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl p-6 shadow-sm border border-slate-200">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
@@ -442,6 +536,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
             <option value={10}>10</option>
             <option value={15}>15</option>
             <option value={20}>20</option>
+            <option value={50}>50</option>
           </select>
           <span className="text-sm text-slate-600">rows per page</span>
         </div>
@@ -475,7 +570,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ file }) => {
                 <tr key={index} className="hover:bg-slate-50 transition-colors">
                   {visibleColumnsList.map((column, colIndex) => (
                     <td key={colIndex} className="px-6 py-4 text-sm text-slate-900">
-                      <div className="truncate max-w-xs" title={String(row[column])}>
+                      <div className="truncate max-w-xs" title={String(row[column] || "")}>
                         {String(row[column] || "")}
                       </div>
                     </td>

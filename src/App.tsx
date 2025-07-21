@@ -1,47 +1,49 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import UploadZip from "./components/UploadZip";
 import FileExplorer from "./components/FileExplorer";
-import { CsvViewer } from "./components/CsvViewer";
+import CsvViewer from "./components/CsvViewer";
 import PdfViewer from "./components/PdfViewer";
 import { FolderOpen, File, Database } from "lucide-react";
 
 export default function App() {
   const [structure, setStructure] = useState<any>(null);
   const [selectedFile, setSelectedFile] = useState<any>(null);
-  const [fileMap, setFileMap] = useState<Record<string, File>>({});
+  const [fileContents, setFileContents] = useState<Record<string, File>>({});
+  const [error, setError] = useState<string>("");
 
+  const handleFileClick = (file: any) => setSelectedFile(file);
 
-  const handleFileClick = (file: any) => {
-    setSelectedFile(file);
+  const handleStructureReady = (
+    newStructure: any,
+    newFileContents: Record<string, File>
+  ) => {
+    setStructure(newStructure);
+    setFileContents(newFileContents);
+    setSelectedFile(null);
+    setError("");
+  };
+
+  const clearData = () => {
+    setStructure(null);
+    setSelectedFile(null);
+    setFileContents({});
+    setError("");
   };
 
   const getFileStats = (node: any): { files: number; folders: number } => {
-    if (node.type === "file") {
-      return { files: 1, folders: 0 };
-    }
+    if (node.type === "file") return { files: 1, folders: 0 };
 
-    let totalFiles = 0;
-    let totalFolders = 1;
-
-    node.children.forEach((child: any) => {
-      const stats = getFileStats(child);
-      totalFiles += stats.files;
-      totalFolders += stats.folders;
-    });
-
-    return { files: totalFiles, folders: totalFolders - 1 };
+    return (node.children || []).reduce(
+      (acc: any, child: any) => {
+        const stats = getFileStats(child);
+        return {
+          files: acc.files + stats.files,
+          folders: acc.folders + stats.folders,
+        };
+      },
+      { files: 0, folders: 1 } // current folder
+    );
   };
-
-  useEffect(() => {
-    const fetchStructure = async () => {
-      const res = await fetch("http://localhost:5000/api/files/structure");
-      const data = await res.json();
-      console.log("Loaded structure:", data);
-      // setFileTree(data[0]); // Or whatever format your frontend expects
-    };
-
-    fetchStructure();
-  }, []);
 
   const stats = structure ? getFileStats(structure) : { files: 0, folders: 0 };
 
@@ -60,21 +62,29 @@ export default function App() {
                   Nested Folder Viewer
                 </h1>
                 <p className="text-sm text-slate-600">
-                  Drag and drop ZIPs to explore contents
+                  Upload ZIP files to explore contents
                 </p>
               </div>
             </div>
 
             {structure && (
-              <div className="flex items-center space-x-6 text-sm">
-                <div className="flex items-center space-x-2 text-slate-600">
-                  <FolderOpen className="w-4 h-4" />
-                  <span>{stats.folders} folders</span>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-6 text-sm text-slate-600">
+                  <div className="flex items-center space-x-2">
+                    <FolderOpen className="w-4 h-4" />
+                    <span>{stats.folders - 1} folders</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <File className="w-4 h-4" />
+                    <span>{stats.files} files</span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 text-slate-600">
-                  <File className="w-4 h-4" />
-                  <span>{stats.files} files</span>
-                </div>
+                <button
+                  onClick={clearData}
+                  className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors"
+                >
+                  Upload New
+                </button>
               </div>
             )}
           </div>
@@ -83,30 +93,16 @@ export default function App() {
 
       {/* Main */}
       <main className="flex-grow overflow-hidden w-full">
+        {error && (
+          <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
+
         {!structure ? (
           <div className="h-full w-full overflow-auto p-6 flex justify-center items-center">
             <div className="w-full max-w-3xl">
-<UploadZip
-  onStructureReady={(savedStructure, fileMap) => {
-    // Inject blobs into the structure
-    const attachFiles = (node: any): any => {
-      if (node.type === "file" && fileMap[node.name]) {
-        return { ...node, file: fileMap[node.name] };
-      }
-      if (node.type === "folder" && Array.isArray(node.children)) {
-        return {
-          ...node,
-          children: node.children.map(attachFiles),
-        };
-      }
-      return node;
-    };
-
-    const hydratedStructure = attachFiles(savedStructure);
-    setStructure(hydratedStructure);
-    setFileMap(fileMap);
-  }}
-/>
+              <UploadZip onStructureReady={handleStructureReady} />
             </div>
           </div>
         ) : (
@@ -137,9 +133,9 @@ export default function App() {
                         <p className="text-sm text-slate-600">
                           {selectedFile.fileType.toUpperCase()} • Modified by{" "}
                           {selectedFile.modifiedBy} •{" "}
-                          {new Date(
-                            selectedFile.createdAt
-                          ).toLocaleDateString()}
+                          {new Date(selectedFile.createdAt).toLocaleDateString()}
+                          {selectedFile.size &&
+                            ` • ${(selectedFile.size / 1024).toFixed(1)} KB`}
                         </p>
                       </div>
                     </div>
@@ -160,11 +156,22 @@ export default function App() {
 
                 {/* Content Body */}
                 <div className="p-6 overflow-auto flex-grow">
-                  {selectedFile && selectedFile.fileType === "csv" && (
+                  {selectedFile?.fileType === "csv" && selectedFile.file && (
                     <CsvViewer file={selectedFile.file} />
                   )}
-                  {selectedFile && selectedFile.fileType === "pdf" && (
+                  {selectedFile?.fileType === "pdf" && selectedFile.file && (
                     <PdfViewer file={selectedFile.file} />
+                  )}
+                  {selectedFile && !selectedFile.file && (
+                    <div className="flex items-center justify-center h-64">
+                      <div className="text-center">
+                        <File className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                        <p className="text-slate-600">File content not available</p>
+                        <p className="text-sm text-slate-500 mt-1">
+                          The file may not have been processed correctly
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
